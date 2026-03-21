@@ -12,6 +12,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # ✅ Fix CMake policy error for z3-sys
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
   prepare:
@@ -32,66 +34,63 @@ jobs:
           echo "tag_name=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
           echo "release_name=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
-  release-macos:
-    name: ${{ matrix.job.target }} (macOS)
-    runs-on: macos-latest  # ✅ GitHub-hosted runner - NO AWS/self-hosted needed
+  release-macos-arm64:
+    name: ityfuzz (macOS ARM64)
+    runs-on: macos-latest  # GitHub-hosted, no AWS/self-hosted needed
     needs: prepare
-    strategy:
-      matrix:
-        job:
-          - os: macos-latest
-            platform: darwin
-            target: x86_64-apple-darwin
-            arch: amd64
-            svm_target_platform: macosx-amd64
-          - os: macos-latest
-            platform: darwin
-            target: aarch64-apple-darwin
-            arch: arm64
-            svm_target_platform: macosx-aarch64
 
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive  # Critical for ityfuzz dependencies
+          submodules: recursive  # Critical for ityfuzz
 
       - uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: "nightly-2024-01-01"
-          targets: ${{ matrix.job.target }}
+          targets: aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-          prefix-key: "v2-macos"
-          key: ${{ matrix.job.target }}
+          prefix-key: "v2-macos-arm64"
+          key: aarch64-apple-darwin
 
-      - name: Install macOS dependencies (Z3, OpenSSL)
+      # ✅ Install dependencies + use system Z3 to avoid z3-sys build issues
+      - name: Install macOS dependencies
         run: |
-          brew install z3 openssl pkg-config cmake
+          brew update
+          brew install cmake z3 openssl pkg-config
+          cmake --version
+          z3 --version
 
-      - name: Build binaries
+      - name: Build ARM64 binary
         env:
-          SVM_TARGET_PLATFORM: ${{ matrix.job.svm_target_platform }}
+          SVM_TARGET_PLATFORM: macosx-aarch64
           OPENSSL_DIR: /usr/local/opt/openssl
+          Z3_SYS_USE_PKG_CONFIG: "1"
+          PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: |
           cargo build --release \
             --bins \
-            --target ${{ matrix.job.target }} \
+            --target aarch64-apple-darwin \
             --features "cmp dataflow evm print_txn_corpus full_trace force_cache real_balance" \
             --no-default-features \
             --locked
 
-      - name: Archive binaries
+      - name: Verify binary architecture
+        run: |
+          file target/aarch64-apple-darwin/release/ityfuzz
+          # Should output: Mach-O 64-bit executable arm64
+
+      - name: Archive binary
         id: artifacts
         env:
-          TARGET: ${{ matrix.job.target }}
-          ARCH: ${{ matrix.job.arch }}
           VERSION_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
-          chmod +x "./target/${TARGET}/release/ityfuzz"
-          gtar -czvf "ityfuzz_${VERSION_NAME}_darwin_${ARCH}.tar.gz" -C ./target/${TARGET}/release ityfuzz
-          echo "file_name=ityfuzz_${VERSION_NAME}_darwin_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
+          chmod +x "./target/aarch64-apple-darwin/release/ityfuzz"
+          gtar -czvf "ityfuzz_${VERSION_NAME}_macos_arm64.tar.gz" -C ./target/aarch64-apple-darwin/release ityfuzz
+          echo "file_name=ityfuzz_${VERSION_NAME}_macos_arm64.tar.gz" >> $GITHUB_OUTPUT
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
