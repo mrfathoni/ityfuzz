@@ -1,0 +1,28 @@
+name: Build macOS Release
+
+on:
+  push:
+    tags: ['v*']  # Or use branches: [main]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly-2024-01-01
+      
+      - name: Install dependencies
+        run: brew install openssl z3 pkg-config cmake
+      
+      - name: Build release binary
+        run: cargo build --release --features flashloan_v2
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ityfuzz-macos
+          path: target/release/ityfuzz
