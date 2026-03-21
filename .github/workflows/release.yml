@@ -12,8 +12,12 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # ✅ Fix CMake policy error for z3-sys
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  CARGO_BUILD_JOBS: "2"
+  # ✅ Critical: Force z3-sys to use system Z3, not build from source
+  Z3_SYS_USE_PKG_CONFIG: "1"
+  Z3_STATIC: "0"
 
 jobs:
   prepare:
@@ -24,10 +28,9 @@ jobs:
       tag_name: ${{ steps.release_info.outputs.tag_name }}
       release_name: ${{ steps.release_info.outputs.release_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
       - name: Compute release name and tag
         id: release_info
         run: |
@@ -36,52 +39,64 @@ jobs:
 
   release-macos-arm64:
     name: ityfuzz (macOS ARM64)
-    runs-on: macos-latest  # GitHub-hosted, no AWS/self-hosted needed
+    runs-on: macos-latest
     needs: prepare
+    timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
-          submodules: recursive  # Critical for ityfuzz
+          submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "nightly-2024-01-01"
           targets: aarch64-apple-darwin
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v3
         with:
           cache-on-failure: true
           prefix-key: "v2-macos-arm64"
           key: aarch64-apple-darwin
 
-      # ✅ Install dependencies + use system Z3 to avoid z3-sys build issues
+      # ✅ Install Z3 via Homebrew (pre-built, Clang-compatible)
       - name: Install macOS dependencies
         run: |
           brew update
           brew install cmake z3 openssl pkg-config
-          cmake --version
+          # Verify Z3 is available
           z3 --version
+          pkg-config --modversion z3
 
       - name: Build ARM64 binary
         env:
           SVM_TARGET_PLATFORM: macosx-aarch64
           OPENSSL_DIR: /usr/local/opt/openssl
-          Z3_SYS_USE_PKG_CONFIG: "1"
           PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          CARGO_BUILD_JOBS: "2"
+          # ✅ Force use of system Z3
+          Z3_SYS_USE_PKG_CONFIG: "1"
+          Z3_STATIC: "0"
+          # ✅ Skip building bundled Z3 entirely
+          Z3_SYS_SKIP_BUILD: "1"
         run: |
+          # Verify pkg-config can find Z3
+          pkg-config --libs z3
+          pkg-config --cflags z3
+          
           cargo build --release \
+            --verbose \
             --bins \
             --target aarch64-apple-darwin \
             --features "cmp dataflow evm print_txn_corpus full_trace force_cache real_balance" \
             --no-default-features \
-            --locked
+            --locked \
+            --jobs 2
 
       - name: Verify binary architecture
         run: |
           file target/aarch64-apple-darwin/release/ityfuzz
-          # Should output: Mach-O 64-bit executable arm64
 
       - name: Archive binary
         id: artifacts
