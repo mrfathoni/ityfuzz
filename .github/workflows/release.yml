@@ -64,22 +64,15 @@ jobs:
           SVM_TARGET_PLATFORM: macosx-aarch64
           OPENSSL_DIR: /opt/homebrew/opt/openssl
           PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig
-          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-          CARGO_BUILD_JOBS: "2"
-          # ✅ z3-sys 0.8.1 respects these instead of Z3_SYS_USE_PKG_CONFIG
-          Z3_LIB_DIR: /opt/homebrew/lib
-          Z3_INCLUDE_DIRS: /opt/homebrew/include
-          Z3_STATIC: "0"
         run: |
-          pkg-config --libs z3
-          pkg-config --cflags z3
-
           cargo build --release \
             --verbose \
             --bins \
             --target aarch64-apple-darwin \
             --features "cmp dataflow evm print_txn_corpus full_trace force_cache real_balance" \
             --no-default-features \
+            # ✅ add gh-release to pull a prebuilt Z3 instead of compiling it
+            --features "z3-sys/gh-release" \
             --locked \
             --jobs 2
       - name: Verify binary architecture
