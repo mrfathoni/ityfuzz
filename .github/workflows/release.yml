@@ -55,19 +55,25 @@ jobs:
           brew install cmake z3 openssl pkg-config
           z3 --version
           pkg-config --modversion z3
+          # ✅ Print actual paths so you can verify Z3_LIB_DIR/Z3_INCLUDE_DIRS match
+          echo "Z3 lib dir: $(brew --prefix z3)/lib"
+          echo "Z3 include dir: $(brew --prefix z3)/include"
+          ls $(brew --prefix z3)/lib/libz3*
       - name: Build ARM64 binary
         env:
           SVM_TARGET_PLATFORM: macosx-aarch64
-          OPENSSL_DIR: /opt/homebrew/opt/openssl   # ✅ fix: ARM64 Homebrew path
-          PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig  # ✅ fix: ARM64 path first
+          OPENSSL_DIR: /opt/homebrew/opt/openssl
+          PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           CARGO_BUILD_JOBS: "2"
-          Z3_SYS_USE_PKG_CONFIG: "1"
+          # ✅ z3-sys 0.8.1 respects these instead of Z3_SYS_USE_PKG_CONFIG
+          Z3_LIB_DIR: /opt/homebrew/lib
+          Z3_INCLUDE_DIRS: /opt/homebrew/include
           Z3_STATIC: "0"
-          # ✅ fix: removed Z3_SYS_SKIP_BUILD — non-standard, conflicts with pkg-config approach
         run: |
           pkg-config --libs z3
           pkg-config --cflags z3
+
           cargo build --release \
             --verbose \
             --bins \
