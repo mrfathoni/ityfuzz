@@ -15,7 +15,6 @@ env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   CARGO_BUILD_JOBS: "2"
-  # ✅ Critical: Force z3-sys to use system Z3, not build from source
   Z3_SYS_USE_PKG_CONFIG: "1"
   Z3_STATIC: "0"
 
@@ -53,20 +52,19 @@ jobs:
           toolchain: "nightly-2024-01-01"
           targets: aarch64-apple-darwin
 
-      - uses: Swatinem/rust-cache@v3
+      # ✅ FIXED: Use v2 (v3 doesn't exist)
+      - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
           prefix-key: "v2-macos-arm64"
           key: aarch64-apple-darwin
 
-      # ✅ Install Z3 via Homebrew (pre-built, Clang-compatible)
       - name: Install macOS dependencies
         run: |
           brew update
           brew install cmake z3 openssl pkg-config
-          # Verify Z3 is available
+          cmake --version
           z3 --version
-          pkg-config --modversion z3
 
       - name: Build ARM64 binary
         env:
@@ -75,13 +73,9 @@ jobs:
           PKG_CONFIG_PATH: /opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           CARGO_BUILD_JOBS: "2"
-          # ✅ Force use of system Z3
           Z3_SYS_USE_PKG_CONFIG: "1"
           Z3_STATIC: "0"
-          # ✅ Skip building bundled Z3 entirely
-          Z3_SYS_SKIP_BUILD: "1"
         run: |
-          # Verify pkg-config can find Z3
           pkg-config --libs z3
           pkg-config --cflags z3
           
