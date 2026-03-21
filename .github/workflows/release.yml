@@ -83,8 +83,11 @@ jobs:
         env:
           VERSION_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
+          # Copy z3 dylib alongside binary so it's portable
+          cp $(brew --prefix z3)/lib/libz3.dylib ./target/aarch64-apple-darwin/release/
           chmod +x "./target/aarch64-apple-darwin/release/ityfuzz"
-          gtar -czvf "ityfuzz_${VERSION_NAME}_macos_arm64.tar.gz" -C ./target/aarch64-apple-darwin/release ityfuzz
+          gtar -czvf "ityfuzz_${VERSION_NAME}_macos_arm64.tar.gz" \
+            -C ./target/aarch64-apple-darwin/release ityfuzz libz3.dylib
           echo "file_name=ityfuzz_${VERSION_NAME}_macos_arm64.tar.gz" >> $GITHUB_OUTPUT
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
