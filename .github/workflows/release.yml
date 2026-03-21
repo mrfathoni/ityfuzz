@@ -84,7 +84,6 @@ jobs:
             --target aarch64-apple-darwin \
             --features "cmp dataflow evm print_txn_corpus full_trace force_cache real_balance" \
             --no-default-features \
-            --locked \
             --jobs 2
 
       - name: Verify binary architecture
