@@ -1,6 +1,7 @@
 use super::types::EVMU512;
 
 pub mod arb_call;
+pub mod arb_transfer;
 pub mod echidna;
 pub mod erc20;
 pub mod function;
@@ -19,6 +20,7 @@ pub static SELFDESTRUCT_BUG_IDX: u64 = 5;
 pub static ECHIDNA_BUG_IDX: u64 = 6;
 pub static STATE_COMP_BUG_IDX: u64 = 7;
 pub static ARB_CALL_BUG_IDX: u64 = 8;
+pub static ARB_TRANSFER_BUG_IDX: u64 = 12;
 pub static REENTRANCY_BUG_IDX: u64 = 9;
 pub static INVARIANT_BUG_IDX: u64 = 10;
 pub static INTEGER_OVERFLOW_BUG_IDX: u64 = 11;

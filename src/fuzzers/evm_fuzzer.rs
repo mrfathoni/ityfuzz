@@ -56,6 +56,7 @@ use crate::{
             reentrancy::ReentrancyOracle,
             selfdestruct::SelfdestructOracle,
             typed_bug::TypedBugOracle,
+            arb_transfer::ArbitraryERC20TransferOracle,
         },
         presets::ExploitTemplate,
         scheduler::{PowerABIMutationalStage, PowerABIScheduler, UncoveredBranchesMetadata},
@@ -422,6 +423,9 @@ pub fn evm_fuzzer(
 
     if config.arbitrary_external_call {
         oracles.push(Rc::new(RefCell::new(ArbitraryCallOracle::new(
+            artifacts.address_to_name.clone(),
+        ))));
+        oracles.push(Rc::new(RefCell::new(ArbitraryERC20TransferOracle::new(
             artifacts.address_to_name.clone(),
         ))));
     }

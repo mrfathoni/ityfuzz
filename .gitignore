@@ -21,3 +21,17 @@ Move.lock
 /w_**/
 /tests/evm_manual/story-core
 run_ityfuzz.sh
+.DS_Store
+ityfuzz_clone
+tmp-mount-*
+aw/
+solutions/
+.commandcode/
+*.png
+main.js
+polyfills.js
+orbstack-vmgr.lock
+com.apple.*
+*.lock
+server/node_modules
+server/package-lock.json

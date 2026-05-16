@@ -661,14 +661,16 @@ impl OnChainConfig {
         let resp = self._request("eth_blockNumber".to_string(), "[]".to_string());
         match resp {
             Some(resp) => {
-                let block_number = resp.as_str().unwrap();
-                self.block_number = block_number.to_string();
-                let block_number = EVMU256::from_str_radix(block_number.trim_start_matches("0x"), 16)
-                    .unwrap()
-                    .to_string();
-                debug!("latest block number is {}", block_number);
+                if let Some(block_number) = resp.as_str() {
+                    self.block_number = block_number.to_string();
+                    if let Ok(bn) = EVMU256::from_str_radix(block_number.trim_start_matches("0x"), 16) {
+                        debug!("latest block number is {}", bn);
+                    }
+                } else {
+                    warn!("failed to parse block number response");
+                }
             }
-            None => panic!("fail to get latest block number"),
+            None => warn!("fail to get latest block number, keeping default"),
         }
     }
 
@@ -676,7 +678,7 @@ impl OnChainConfig {
         self.etherscan_api_key.push(key);
     }
 
-    pub fn fetch_blk_hash(&mut self) -> &String {
+    pub fn fetch_blk_hash(&mut self) -> String {
         if self.block_hash.is_none() {
             self.block_hash = {
                 let mut params = String::from("[");
@@ -685,14 +687,16 @@ impl OnChainConfig {
                 let res = self._request("eth_getBlockByNumber".to_string(), params);
                 match res {
                     Some(res) => {
-                        let blk_hash = res["hash"].as_str().expect("fail to find block hash").to_string();
-                        Some(blk_hash)
+                        res["hash"].as_str().map(|h| h.to_string())
                     }
-                    None => panic!("fail to get block hash"),
+                    None => {
+                        warn!("fail to get block hash");
+                        None
+                    }
                 }
             }
         }
-        return self.block_hash.as_ref().unwrap();
+        self.block_hash.clone().unwrap_or_default()
     }
 
     pub fn fetch_storage_dump(&mut self, address: EVMAddress) -> Option<Arc<HashMap<EVMU256, EVMU256>>> {
@@ -875,9 +879,19 @@ impl OnChainConfig {
                 .and_then(|resp| resp.text().ok())?;
             debug!("<< {}", resp);
 
-            return serde_json::from_str(&resp)
-                .ok()
-                .and_then(|json: Value| json.get("result").cloned());
+            let json: Value = match serde_json::from_str(&resp) {
+                Ok(j) => j,
+                Err(e) => {
+                    warn!("Failed to parse RPC response: {e}");
+                    return None;
+                }
+            };
+
+            if let Some(err) = json.get("error") {
+                warn!("RPC error for {}: {:?}", method, err);
+            }
+
+            return json.get("result").cloned();
         }
         // Handling IPC request
         else if self.endpoint_url.starts_with("/") ||
@@ -1095,21 +1109,18 @@ impl OnChainConfig {
                 let mut params = String::from("[");
                 params.push_str(&format!("\"{}\",false", self.block_number));
                 params.push(']');
-                let res = self._request("eth_getBlockByNumber".to_string(), params);
-                match res {
-                    Some(res) => {
-                        let blk_timestamp = res["timestamp"]
-                            .as_str()
-                            .expect("fail to find block timestamp")
-                            .to_string();
-                        Some(blk_timestamp)
+                match self._request("eth_getBlockByNumber".to_string(), params) {
+                    Some(res) => res["timestamp"].as_str().map(|t| t.to_string()),
+                    None => {
+                        warn!("fail to get block timestamp");
+                        None
                     }
-                    None => panic!("fail to get block timestamp"),
                 }
             }
         }
-        let timestamp = EVMU256::from_str(self.timestamp.as_ref().unwrap()).unwrap();
-        timestamp
+        self.timestamp.as_ref()
+            .and_then(|t| EVMU256::from_str(t).ok())
+            .unwrap_or(EVMU256::ZERO)
     }
 
     pub fn fetch_blk_coinbase(&mut self) -> EVMAddress {
@@ -1118,18 +1129,18 @@ impl OnChainConfig {
                 let mut params = String::from("[");
                 params.push_str(&format!("\"{}\",false", self.block_number));
                 params.push(']');
-                let res = self._request("eth_getBlockByNumber".to_string(), params);
-                match res {
-                    Some(res) => {
-                        let blk_coinbase = res["miner"].as_str().expect("fail to find block coinbase").to_string();
-                        Some(blk_coinbase)
+                match self._request("eth_getBlockByNumber".to_string(), params) {
+                    Some(res) => res["miner"].as_str().map(|c| c.to_string()),
+                    None => {
+                        warn!("fail to get block coinbase");
+                        None
                     }
-                    None => panic!("fail to get block coinbase"),
                 }
             }
         }
-        let coinbase = EVMAddress::from_str(self.coinbase.as_ref().unwrap()).unwrap();
-        coinbase
+        self.coinbase.as_ref()
+            .and_then(|c| EVMAddress::from_str(c).ok())
+            .unwrap_or(EVMAddress::zero())
     }
 
     pub fn fetch_blk_gaslimit(&mut self) -> EVMU256 {
@@ -1138,21 +1149,18 @@ impl OnChainConfig {
                 let mut params = String::from("[");
                 params.push_str(&format!("\"{}\",false", self.block_number));
                 params.push(']');
-                let res = self._request("eth_getBlockByNumber".to_string(), params);
-                match res {
-                    Some(res) => {
-                        let blk_gaslimit = res["gasLimit"]
-                            .as_str()
-                            .expect("fail to find block coinbase")
-                            .to_string();
-                        Some(blk_gaslimit)
+                match self._request("eth_getBlockByNumber".to_string(), params) {
+                    Some(res) => res["gasLimit"].as_str().map(|g| g.to_string()),
+                    None => {
+                        warn!("fail to get block gaslimit");
+                        None
                     }
-                    None => panic!("fail to get block coinbase"),
                 }
             }
         }
-        let gaslimit = EVMU256::from_str(self.gaslimit.as_ref().unwrap()).unwrap();
-        gaslimit
+        self.gaslimit.as_ref()
+            .and_then(|g| EVMU256::from_str(g).ok())
+            .unwrap_or(EVMU256::ZERO)
     }
 
     pub fn get_contract_code(&mut self, address: EVMAddress, force_cache: bool) -> String {
@@ -1245,28 +1253,54 @@ impl OnChainConfig {
         if self.pair_cache.contains_key(&EVMAddress::from_str(&token).unwrap()) {
             return self.pair_cache[&EVMAddress::from_str(&token).unwrap()].clone();
         }
+        let pairs_server = std::env::var("PAIRS_SERVER_URL")
+            .unwrap_or_else(|_| "https://pairs-all.infra.fuzz.land".to_string());
         let url = if is_pegged {
-            format!("https://pairs-all.infra.fuzz.land/single_pair/{network}/{token}/{weth}")
+            format!("{pairs_server}/single_pair/{network}/{token}/{weth}")
         } else {
-            format!("https://pairs-all.infra.fuzz.land/pairs/{network}/{token}")
+            format!("{pairs_server}/pairs/{network}/{token}")
         };
         debug!(">> {url}");
-        let resp: Value = reqwest::blocking::get(url).unwrap().json().unwrap();
+        let resp: Value = match reqwest::blocking::get(&url) {
+            Ok(r) => match r.json() {
+                Ok(j) => j,
+                Err(e) => {
+                    warn!("Failed to parse pairs response from {}: {e}", url);
+                    return vec![];
+                }
+            },
+            Err(e) => {
+                warn!("Pairs server unreachable ({}): {e}", url);
+                return vec![];
+            }
+        };
         debug!("<< {}", resp.to_string());
         let mut pairs: Vec<PairData> = Vec::new();
         if let Some(resp_pairs) = resp.as_array() {
             for item in resp_pairs {
-                let pair = item["pair"].as_str().unwrap().to_string();
-                let code = self.get_contract_code(EVMAddress::from_str(&pair).unwrap(), false);
+                let pair = match item["pair"].as_str() {
+                    Some(p) => p.to_string(),
+                    None => continue,
+                };
+                let code = match EVMAddress::from_str(&pair) {
+                    Ok(addr) => self.get_contract_code(addr, false),
+                    Err(_) => continue,
+                };
                 if code.is_empty() {
                     info!("skip pair {pair} due to empty code");
                     continue;
                 }
-                let token0 = item["token0"].as_str().unwrap().to_string();
-                let token1 = item["token1"].as_str().unwrap().to_string();
+                let token0 = match item["token0"].as_str() {
+                    Some(t) => t.to_string(),
+                    None => continue,
+                };
+                let token1 = match item["token1"].as_str() {
+                    Some(t) => t.to_string(),
+                    None => continue,
+                };
 
-                let token0_decimals = item["token0_decimals"].as_i64().unwrap();
-                let token1_decimals = item["token1_decimals"].as_i64().unwrap();
+                let token0_decimals = item["token0_decimals"].as_i64().unwrap_or(0);
+                let token1_decimals = item["token1_decimals"].as_i64().unwrap_or(0);
                 let data = PairData {
                     src: if is_pegged { "pegged" } else { "lp" }.to_string(),
                     in_: if token == token0 { 0 } else { 1 },
@@ -1277,8 +1311,8 @@ impl OnChainConfig {
                         token0.clone()
                     },
                     in_token: token.clone(),
-                    interface: item["interface"].as_str().unwrap().to_string(),
-                    src_exact: item["src_exact"].as_str().unwrap().to_string(),
+                    interface: item["interface"].as_str().unwrap_or("").to_string(),
+                    src_exact: item["src_exact"].as_str().unwrap_or("").to_string(),
                     initial_reserves_0: EVMU256::ZERO,
                     initial_reserves_1: EVMU256::ZERO,
                     decimals_0: if token0_decimals >= 0 {

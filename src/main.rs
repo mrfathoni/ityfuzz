@@ -1,7 +1,6 @@
 #![feature(downcast_unchecked)]
 #![feature(let_chains)]
 #![feature(unchecked_math)]
-#![feature(trait_alias)]
 
 extern crate core;
 

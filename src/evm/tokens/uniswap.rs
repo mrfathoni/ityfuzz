@@ -232,10 +232,27 @@ fn get_pegged_next_hop(chain: &mut Box<dyn ChainConfig>, token: &str) -> PairDat
 
     let pairs = get_pair(chain, token, true);
     debug!(%token, ?pairs, "get_pair (pegged)");
-    let mut peg_info = pairs
-        .first()
-        .expect("Unexpected RPC error, consider setting env <ETH_RPC_URL> ")
-        .clone();
+    let mut peg_info = match pairs.first() {
+        Some(p) => p.clone(),
+        None => {
+            warn!("No pegged pair found for token {:?}, skipping", token);
+            return PairData {
+                src: "pegged".to_string(),
+                pair: "".to_string(),
+                in_: 0,
+                in_token: token.to_string(),
+                next: "".to_string(),
+                interface: "".to_string(),
+                src_exact: "".to_string(),
+                initial_reserves_0: EVMU256::ZERO,
+                initial_reserves_1: EVMU256::ZERO,
+                decimals_0: 0,
+                decimals_1: 0,
+                token0: "".to_string(),
+                token1: "".to_string(),
+            };
+        }
+    };
 
     add_reserve_info(chain, &mut peg_info);
 

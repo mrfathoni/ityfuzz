@@ -51,10 +51,28 @@ impl BuildJob {
         let client = get_client();
         let url = format!("{}onchain/{}/{:?}?needs={}", self.build_server, chain, addr, NEEDS);
         debug!("Submitting artifact build job to {}", url);
-        let resp = client.get(&url).send().expect("submit onchain job failed");
-
-        let json = serde_json::from_str::<Value>(&resp.text().expect("parse json failed")).expect("parse json failed");
-        if json["code"].as_u64().expect("get status failed") != 200 {
+        let resp = match client.get(&url).send() {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Build server unreachable ({}): {e}", url);
+                return None;
+            }
+        };
+        let text = match resp.text() {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Failed to read build response: {e}");
+                return None;
+            }
+        };
+        let json: Value = match serde_json::from_str(&text) {
+            Ok(j) => j,
+            Err(e) => {
+                error!("Failed to parse build response: {e}");
+                return None;
+            }
+        };
+        if json["code"].as_u64().unwrap_or(0) != 200 {
             error!("submit onchain job failed for {:?}", addr);
             return None;
         }
@@ -121,16 +139,46 @@ impl JobContext {
     pub fn wait_build_job(&self) -> Option<BuildJobResult> {
         let client = get_client();
         let url = format!("{}task/{}/", self.build_server, self.id);
+        let mut attempts = 0u32;
         loop {
+            if attempts > 60 {
+                error!("Timeout waiting for build job {:?}", self.id);
+                return None;
+            }
+            attempts += 1;
             debug!("Retrieving artifact build job from {}", url);
-            let resp = client.get(&url).send().expect("retrieve onchain job failed");
-            let json =
-                serde_json::from_str::<Value>(&resp.text().expect("parse json failed")).expect("parse json failed");
-            if json["code"].as_u64().expect("get status failed") != 200 {
+            let resp = match client.get(&url).send() {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("Build server unreachable ({}): {e}", url);
+                    return None;
+                }
+            };
+            let text = match resp.text() {
+                Ok(t) => t,
+                Err(e) => {
+                    error!("Failed to read build response: {e}");
+                    return None;
+                }
+            };
+            let json: Value = match serde_json::from_str(&text) {
+                Ok(j) => j,
+                Err(e) => {
+                    error!("Failed to parse build response: {e}");
+                    return None;
+                }
+            };
+            if json["code"].as_u64().unwrap_or(0) != 200 {
                 error!("retrieve onchain job failed for {:?}", self.id);
                 return None;
             }
-            let status = json["status"].as_str().expect("get status failed");
+            let status = match json["status"].as_str() {
+                Some(s) => s,
+                None => {
+                    error!("get status failed for {:?}", self.id);
+                    return None;
+                }
+            };
             if status == "error" {
                 error!("retrieve onchain job failed for {:?} due to error", self.id);
                 return None;
@@ -141,8 +189,14 @@ impl JobContext {
                 continue;
             }
 
-            let results = json["results"].as_str().expect("get results failed");
-            return BuildJobResult::from_json_url(results.to_string());
+            let results = match json["results"].as_str() {
+                Some(r) => r.to_string(),
+                None => {
+                    error!("get results failed for {:?}", self.id);
+                    return None;
+                }
+            };
+            return BuildJobResult::from_json_url(results);
         }
     }
 }
@@ -180,9 +234,27 @@ impl BuildJobResult {
 
     pub fn from_json_url(url: String) -> Option<Self> {
         let client = get_client();
-        let resp = client.get(&url).send().expect("retrieve onchain job failed");
-
-        let json = serde_json::from_str::<Value>(&resp.text().expect("parse json failed")).expect("parse json failed");
+        let resp = match client.get(&url).send() {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Build server unreachable ({}): {e}", url);
+                return None;
+            }
+        };
+        let text = match resp.text() {
+            Ok(t) => t,
+            Err(e) => {
+                error!("Failed to read build response: {e}");
+                return None;
+            }
+        };
+        let json: Value = match serde_json::from_str(&text) {
+            Ok(j) => j,
+            Err(e) => {
+                error!("Failed to parse build response: {e}");
+                return None;
+            }
+        };
         if let Some(success) = json["success"].as_bool() {
             if !success {
                 error!("retrieve onchain job failed for {:?}", url);
@@ -197,37 +269,69 @@ impl BuildJobResult {
     }
 
     pub fn from_json(json: &Value) -> Option<Self> {
-        let sourcemap = json["sourcemap"].as_str().expect("get sourcemap failed");
+        let sourcemap = match json["sourcemap"].as_str() {
+            Some(s) => s.to_string(),
+            None => {
+                error!("get sourcemap failed");
+                return None;
+            }
+        };
         let mut sourcemap_replacements = vec![];
         if let Some(_replaces) = json["replaces"].as_array() {
             sourcemap_replacements = _replaces
                 .iter()
-                .map(|v| {
-                    let v = v.as_array().expect("get replace failed");
-                    let source = v[0].as_str().expect("get source failed");
-                    let target = v[1].as_str().expect("get target failed");
-                    (source.to_string(), target.to_string())
+                .filter_map(|v| {
+                    let v = v.as_array()?;
+                    let source = v.get(0)?.as_str()?;
+                    let target = v.get(1)?.as_str()?;
+                    Some((source.to_string(), target.to_string()))
                 })
                 .collect_vec();
         }
-        let bytecode = json["runtime_bytecode"].as_str().expect("get bytecode failed");
-        let source_objs = json["sources"].as_object().expect("get sources failed");
+        let bytecode = match json["runtime_bytecode"].as_str() {
+            Some(b) => b.to_string(),
+            None => {
+                error!("get bytecode failed");
+                return None;
+            }
+        };
+        let source_objs = match json["sources"].as_object() {
+            Some(s) => s,
+            None => {
+                error!("get sources failed");
+                return None;
+            }
+        };
         let mut sources = vec![(String::new(), String::new()); source_objs.len()];
         for (k, v) in source_objs {
             let idx = match &v["id"] {
-                Value::Number(v) => v.as_u64().unwrap() as usize,
-                Value::String(v) => v.parse::<usize>().unwrap(),
+                Value::Number(v) => v.as_u64().unwrap_or(0) as usize,
+                Value::String(v) => v.parse::<usize>().unwrap_or(0),
                 _ => {
                     error!("{:?} is not a valid source id", v["id"]);
-                    return None;
+                    continue;
                 }
             };
-            let code = v["source"].as_str().expect("get source code failed");
-            sources[idx] = (k.clone(), code.to_string());
+            let code = match v["source"].as_str() {
+                Some(c) => c.to_string(),
+                None => {
+                    error!("get source code failed");
+                    continue;
+                }
+            };
+            if idx < sources.len() {
+                sources[idx] = (k.clone(), code.to_string());
+            }
         }
 
-        let abi = serde_json::to_string(&json["abi"]).expect("get abi failed");
-        let ast_objs = json["ast"].as_object().expect("get ast failed");
+        let abi = serde_json::to_string(&json["abi"]).unwrap_or_default();
+        let ast_objs = match json["ast"].as_object() {
+            Some(a) => a,
+            None => {
+                error!("get ast failed");
+                return None;
+            }
+        };
         let asts: Vec<(String, Value)> = ast_objs.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 
         Some(Self {

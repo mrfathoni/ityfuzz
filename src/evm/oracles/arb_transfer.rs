@@ -16,7 +16,8 @@ use crate::{
         input::{ConciseEVMInput, EVMInput},
         oracle::EVMBugResult,
         oracles::{ARB_CALL_BUG_IDX, ARB_TRANSFER_BUG_IDX},
-        types::{EVMAddress, EVMFuzzState, EVMOracleCtx, EVMU256},
+        srcmap::SOURCE_MAP_PROVIDER,
+        types::{EVMAddress, EVMFuzzState, EVMOracleCtx, EVMQueueExecutor, EVMU256},
         vm::EVMState,
     },
     fuzzer::ORACLE_OUTPUT,
@@ -35,8 +36,19 @@ impl ArbitraryERC20TransferOracle {
 }
 
 impl
-    Oracle<EVMState, EVMAddress, Bytecode, Bytes, EVMAddress, EVMU256, Vec<u8>, EVMInput, EVMFuzzState, ConciseEVMInput>
-    for ArbitraryERC20TransferOracle
+    Oracle<
+        EVMState,
+        EVMAddress,
+        Bytecode,
+        Bytes,
+        EVMAddress,
+        EVMU256,
+        Vec<u8>,
+        EVMInput,
+        EVMFuzzState,
+        ConciseEVMInput,
+        EVMQueueExecutor,
+    > for ArbitraryERC20TransferOracle
 {
     fn transition(&self, ctx: &mut EVMOracleCtx<'_>, stage: u64) -> u64 {
         0
@@ -61,7 +73,7 @@ impl
     ) -> Vec<u64> {
         if ctx.post_state.arbitrary_transfers.len() > 0 {
             let mut res = vec![];
-            for (caller, pc) in ctx.post_state.arbitrary_transfers.iter() {
+            for (caller, pc, value) in ctx.post_state.arbitrary_transfers.iter() {
                 let mut hasher = DefaultHasher::new();
                 caller.hash(&mut hasher);
                 pc.hash(&mut hasher);
@@ -76,7 +88,7 @@ impl
                 EVMBugResult::new(
                     "Arbitrary Transfer".to_string(),
                     real_bug_idx,
-                    format!("Arbitrary transfer from {:?}", name),
+                    format!("Arbitrary transfer from {:?} (value: {} wei)", name, value),
                     ConciseEVMInput::from_input(ctx.input, ctx.fuzz_state.get_execution_result()),
                     SOURCE_MAP_PROVIDER.lock().unwrap().get_raw_source_map_info(caller, *pc),
                     Some(name.clone()),

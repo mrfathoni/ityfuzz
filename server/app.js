@@ -10,6 +10,7 @@ app.use(express.json({
 }))
 
 let data = [];
+const MAX_DATA = 1000;
 
 let targetUrl = 'http://localhost:8545';
 
@@ -60,3 +61,4 @@ app.all('*', async (req, res) => {
 const port = process.env.PORT || 5001;
 
 app.listen(port, () => console.log(`Server listening on port ${port}`));
+ver listening on port ${port}`));

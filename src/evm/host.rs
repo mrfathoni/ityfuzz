@@ -207,6 +207,8 @@ where
     pub current_self_destructs: Vec<(EVMAddress, usize)>,
     // arbitrary calls
     pub current_arbitrary_calls: Vec<(EVMAddress, EVMAddress, usize)>,
+    // arbitrary transfers
+    pub current_arbitrary_transfers: Vec<(EVMAddress, usize, EVMU256)>,
     // integer_overflow
     pub current_integer_overflow: HashSet<(EVMAddress, usize, &'static str)>,
     // relations file handle
@@ -299,6 +301,7 @@ where
             setcode_data: self.setcode_data.clone(),
             current_self_destructs: self.current_self_destructs.clone(),
             current_arbitrary_calls: self.current_arbitrary_calls.clone(),
+            current_arbitrary_transfers: self.current_arbitrary_transfers.clone(),
             current_integer_overflow: self.current_integer_overflow.clone(),
             relations_file: self.relations_file.try_clone().unwrap(),
             relations_hash: self.relations_hash.clone(),
@@ -361,6 +364,7 @@ where
             setcode_data: HashMap::new(),
             current_self_destructs: Default::default(),
             current_arbitrary_calls: Default::default(),
+            current_arbitrary_transfers: Default::default(),
             current_integer_overflow: Default::default(),
             relations_file: std::fs::File::create(format!("{}/relations.log", workdir)).unwrap(),
             relations_hash: HashSet::new(),
@@ -1482,6 +1486,11 @@ where
         self.call_depth += 1;
 
         let value = EVMU256::from(input.transfer.value);
+
+        // Track arbitrary ETH transfers to the caller
+        if value > EVMU256::ZERO && state.has_caller(&input.contract) {
+            self.current_arbitrary_transfers.push((input.context.caller, interp.program_counter(), value));
+        }
         if cfg!(feature = "real_balance") && value != EVMU256::ZERO {
             let sender = input.transfer.source;
             debug!("call sender: {:?}", sender);
